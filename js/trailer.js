@@ -66,43 +66,71 @@ const TR = (() => {
   }
   function cutTo(x, y, z) { Object.assign(WORLD.cam, { x, y, z, tx: x, ty: y, tz: z }); }
 
-  // Every bout but the finale is a tease: smash to black on the frame the killing blow
-  // lands, let the audio play over the dark, then fast-forward the aftermath behind it.
-  let pending = null, blackout = null, teasing = false;
+  const BYSTANDERS = [
+    ['k', 'w', 'g1'], ['b', 'w', 'f1'], ['r', 'w', 'e1'], ['p', 'w', 'a2'], ['p', 'w', 'b2'], ['p', 'w', 'g2'], ['p', 'w', 'h2'],
+    ['k', 'b', 'e8'], ['n', 'b', 'b8'], ['r', 'b', 'h8'], ['p', 'b', 'a7'], ['p', 'b', 'b7'], ['p', 'b', 'g7'], ['p', 'b', 'h7'],
+  ];
+  // the first bout is the one we show (up to the killing blow); the rest happen off-screen
+  const BOUTS = [
+    [['n', 'w', 'c3'], ['b', 'b', 'd5'], {}],
+    [['b', 'b', 'f5'], ['p', 'w', 'g4'], {}],
+    [['q', 'b', 'a5'], ['n', 'w', 'c3'], { kill: 'queenBolt' }],
+    [['p', 'w', 'b2'], ['q', 'b', 'c3'], {}],
+    [['q', 'w', 'a3'], ['r', 'b', 'd6'], { kill: 'queenFire' }],
+    [['k', 'w', 'g1'], ['n', 'b', 'f2'], {}],
+    [['r', 'w', 'e1'], ['k', 'b', 'e8'], { finale: true }],
+  ];
+  function spawnBout([att, vic]) { for (const [ty, f, n] of [att, vic]) if (!game.rigs[sq(n)]) spawnRig(ty, f, sq(n)); }
+  function* boutScript(att, vic, opts) {
+    const [a, v] = [game.rigs[sq(att)], game.rigs[sq(vic)]];
+    game.busy = true;
+    yield* BATTLE.fight(a, v, opts);
+    WORLD.spot = null;
+    WORLD.bakeRig(v);
+    WORLD.letterboxT = 0; WORLD.banner = null;
+    game.rigs[sq(vic)] = a; game.rigs[sq(att)] = null;
+    const d = sqCenter(sq(vic));
+    yield a.walkTo(d.x, d.y, 80);
+    a.facing = a.faction === 'w' ? 1 : -1; a.rest(0.2);
+    game.busy = false;
+  }
+
+  // Play every bout out invisibly (fixed timestep, no audio) and keep the soaked board,
+  // so the reveal after the black screen shows carnage the viewer never saw happen.
+  let aftermath = null;
+  function simulateAftermath() {
+    game.players = ['human', 'human']; game.attract = false; game.aiToken++;
+    WORLD.reset(); game.rigs = new Array(64).fill(null);
+    place(BYSTANDERS);
+    for (const bout of BOUTS) {
+      spawnBout(bout);
+      const h = WORLD.run(boutScript(bout[0][2], bout[1][2], bout[2]));
+      for (let i = 0; i < 60 * 40 && !h.done(); i++) WORLD.update(1 / 60);
+    }
+    for (let i = 0; i < 60 * 6; i++) WORLD.update(1 / 60);
+    WORLD.settle();
+    const stain = makeCanvas(W, H);
+    stain.getContext('2d').drawImage(WORLD.stain, 0, 0);
+    aftermath = { stain, rigs: WORLD.rigs.slice(), grid: game.rigs.slice(), flies: WORLD.flies.slice() };
+    newGame(['human', 'human'], true);
+    game.state = 'trailer';
+  }
+  function showAftermath() {
+    Object.assign(WORLD, { scripts: [], parts: [], emitters: [], gibs: [], ropes: [], pools: [], fx: [], spot: null, banner: null, letterbox: 0, letterboxT: 0, timeScale: 1, slowT: 0, hitstop: 0 });
+    WORLD.sx.clearRect(0, 0, W, H); WORLD.sx.drawImage(aftermath.stain, 0, 0);
+    WORLD.wx.clearRect(0, 0, W, H);
+    WORLD.rigs = aftermath.rigs; game.rigs = aftermath.grid; WORLD.flies = aftermath.flies;
+    game.busy = false;
+  }
+
+  // smash to black on the frame the killing blow lands; blood hits the lens
+  let blackout = null, teasing = false;
   BATTLE.onKill = () => {
     if (!teasing) return;
-    blackout = card({ dur: 99, fadeIn: 0, fadeOut: 0.1 });
-    WORLD.splatLens(3, 1.3);
-  };
-  async function fight(att, vic, opts = {}) {
-    const [a, v] = [game.rigs[sq(att)], game.rigs[sq(vic)]];
-    cutTo((a.x + v.x) / 2, (a.y + v.y) / 2 - 20, 1.7);
-    game.busy = true;
-    teasing = !opts.full;
-    const h = WORLD.run((function* () {
-      yield* BATTLE.fight(a, v, opts);
-      WORLD.spot = null;
-      WORLD.bakeRig(v);
-      WORLD.letterboxT = 0; WORLD.banner = null;
-      game.rigs[sq(vic)] = a; game.rigs[sq(att)] = null;
-      const d = sqCenter(sq(vic));
-      yield a.walkTo(d.x, d.y, 80);
-      a.facing = a.faction === 'w' ? 1 : -1; a.rest(0.2);
-      game.busy = false;
-    })());
-    pending = h;
-    // lift the previous blackout now that the new shot is framed
-    if (blackout) { blackout.dur = performance.now() / 1000 - blackout.t0 + 0.1; blackout = null; SFX.drum(1); }
-    if (opts.full) return until(() => h.done());
-    await until(() => h.done() || blackout);
-    await sleep(0.85);
-    SFX.quietFx(true); game.warp = 8;
-    await until(() => h.done());
-    game.warp = 1; SFX.quietFx(false);
-    WORLD.settle();
-    WORLD.lens = [];
     teasing = false;
-  }
+    blackout = card({ dur: 99, fadeIn: 0, fadeOut: 0.1 });
+    WORLD.splatLens(4, 1.4);
+  };
 
   async function record() {
     const stream = new MediaStream([...view.captureStream(60).getVideoTracks(), ...SFX.stream().getAudioTracks()]);
@@ -161,44 +189,30 @@ const TR = (() => {
     await sleep(0.5);
     // behind the card, reset to a mid-game board
     WORLD.rigs = []; game.rigs = new Array(64).fill(null);
-    place([
-      ['k', 'w', 'g1'], ['b', 'w', 'f1'], ['r', 'w', 'e1'], ['p', 'w', 'a2'], ['p', 'w', 'b2'], ['p', 'w', 'g2'], ['p', 'w', 'h2'],
-      ['k', 'b', 'e8'], ['n', 'b', 'b8'], ['r', 'b', 'h8'], ['p', 'b', 'a7'], ['p', 'b', 'b7'], ['p', 'b', 'g7'], ['p', 'b', 'h7'],
-    ]);
+    place(BYSTANDERS);
+    spawnBout(BOUTS[0]);
     cutTo(W / 2, H / 2, 1);
     await until(() => performance.now() / 1000 - promise.t0 > promise.dur);
 
-    // 4. the montage: six ways to die, one board that never gets cleaned
+    // 4. one fight, cut on the killing blow
+    const [att, vic] = [game.rigs[sq(BOUTS[0][0][2])], game.rigs[sq(BOUTS[0][1][2])]];
+    cutTo((att.x + vic.x) / 2, (att.y + vic.y) / 2 - 20, 1.7);
+    teasing = true;
     startDrums();
-    // (the e-file stays clear for the final rook)
-    const bouts = [
-      [['n', 'w', 'c3'], ['b', 'b', 'd5'], {}],
-      [['b', 'b', 'f5'], ['p', 'w', 'g4'], {}],
-      [['q', 'b', 'a5'], ['n', 'w', 'c3'], { kill: 'queenBolt' }],
-      [['p', 'w', 'b2'], ['q', 'b', 'c3'], {}],
-      [['q', 'w', 'a3'], ['r', 'b', 'd6'], { kill: 'queenFire' }],
-      [['k', 'w', 'g1'], ['n', 'b', 'f2'], {}],
-    ];
-    for (const [att, vic, opts] of bouts) {
-      for (const [ty, f, n] of [att, vic]) if (!game.rigs[sq(n)]) spawnRig(ty, f, sq(n));
-      await fight(att[2], vic[2], opts);
-    }
+    WORLD.run(boutScript(BOUTS[0][0][2], BOUTS[0][1][2], BOUTS[0][2]));
+    await until(() => blackout);
     stopDrums();
+    await sleep(0.9);          // the kill, heard but not seen
+    SFX.quietFx(true);
+    await sleep(1.5);          // hold on black while the blood runs down the lens
 
-    // 5. checkmate: the one kill we show in full
-    const king = game.rigs[sq('e8')];
-    cutTo(king.x, king.y - 20, 2.2);
-    WORLD.focus(king.x, king.y - 20, 2.4, 1);
-    WORLD.letterboxT = 1;
+    // 5. the reveal: the board after a battle nobody saw
+    showAftermath();
+    SFX.quietFx(false);
+    cutTo(W / 2, H / 2 + 4, 1.35);
+    WORLD.focus(W / 2, H / 2 + 4, 1.0, 0.55);
+    blackout.fadeOut = 1.2; blackout.dur = performance.now() / 1000 - blackout.t0 + 1.2; blackout = null;
     SFX.stinger();
-    king.tween(BATTLE.G.cower, 0.4); king.spasm = 2; king.spasmAmt = 0.3;
-    if (blackout) { blackout.dur = performance.now() / 1000 - blackout.t0 + 0.1; blackout = null; }
-    card({ dur: 2, bg: 0.45, fadeIn: 0.1, lines: [{ text: 'CHECKMATE', blood: true, scale: 5, y: 120 }] });
-    await sleep(2);
-    await fight('e1', 'e8', { finale: true, full: true });
-
-    // 6. the reveal
-    WORLD.focus(W / 2, H / 2 + 4, 1.0, 0.7);
     await sleep(1.2);
     card({ dur: 4, bg: 0, fadeIn: 0.6, fadeOut: 0.5, lines: [{ text: 'EVERY DROP STAYS ON THE BOARD. FOREVER.', y: 262, color: '#e8d8c0', band: true }] });
     await sleep(4.2);
@@ -217,6 +231,7 @@ const TR = (() => {
     window.__trailerDone = true;
   }
 
+  simulateAftermath();
   view.addEventListener('mousedown', () => run());
-  return { run };
+  return { run, ready: true };
 })();
