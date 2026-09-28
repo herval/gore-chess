@@ -408,8 +408,10 @@ function renderWorld() {
   x.imageSmoothingEnabled = false;
   x.drawImage(BG, 0, 0);
   drawTorches(x, performance.now() / 1000);
-  x.drawImage(WORLD.stain, 0, 0);
-  x.drawImage(WORLD.wet, 0, 0);
+  // stains are painted at full strength but shown slightly faded so the board stays readable
+  x.globalAlpha = 0.72; x.drawImage(WORLD.stain, 0, 0);
+  x.globalAlpha = 0.55; x.drawImage(WORLD.wet, 0, 0);
+  x.globalAlpha = 1;
   drawBoardMarks(x);
   WORLD.drawEntities(x);
   WORLD.drawParticles(x);

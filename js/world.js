@@ -348,7 +348,7 @@ const WORLD = {
     if (this.wetFade > 0.2) {
       this.wetFade = 0;
       this.wx.globalCompositeOperation = 'destination-out';
-      this.wx.fillStyle = 'rgba(0,0,0,0.05)'; this.wx.fillRect(0, 0, W, H);
+      this.wx.fillStyle = 'rgba(0,0,0,0.07)'; this.wx.fillRect(0, 0, W, H);
       this.wx.globalCompositeOperation = 'source-over';
     }
   },
