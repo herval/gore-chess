@@ -151,6 +151,17 @@ const WORLD = {
     c.save(); c.translate(Math.round(x), Math.round(y)); if (flip) c.scale(-1, 1); c.rotate(ang);
     c.drawImage(s.c, -s.ax, -s.ay); c.restore();
   },
+  // instantly land/bake everything in flight (used to clean up behind a cut)
+  settle() {
+    for (const p of this.parts) this.splatDrop(p.x, p.y, p.s, 0, 0);
+    this.parts = []; this.emitters = [];
+    for (const p of this.pools) { p.r = p.max; this.drawPool(p); }
+    this.pools = [];
+    for (const g of this.gibs) this.bakeSprite(g.spr, g.x, g.y, g.ang, g.flip, g.bakeAs === undefined ? 'remains' : g.bakeAs);
+    this.gibs = [];
+    for (const r of this.ropes) this.drawRope(this.sx, r, true);
+    this.ropes = [];
+  },
   // carrion flies settle over every corpse, forever
   swarm(x, y, n = 4) {
     for (let i = 0; i < n; i++) this.flies.push({ x, y: y - 6, ph: rand(0, 6.28), sp: rand(3, 6), rx: rand(4, 9), ry: rand(2, 5) });

@@ -49,9 +49,9 @@ const TR = (() => {
       if (b.top && lb > 0.5) FONT.draw(x, b.top, W / 2, 19, { color: '#d8c8b0', align: 'center' });
       if (b.bottom) FONT.bloodTitle(x, b.bottom, W / 2, H - 46, Math.min(1, b.t * 5) < 1 ? 3 : 2, t, b.bottom.length);
     }
-    WORLD.drawLens(x);
     if (!running) card({ dur: 0.05, fadeIn: 0, fadeOut: 0, bg: 0.7, lines: [{ text: 'CLICK TO PLAY THE TRAILER', y: 146, color: '#d02030' }] });
     drawCards(x, t);
+    WORLD.drawLens(x);
   };
 
   function startDrums() {
@@ -66,11 +66,19 @@ const TR = (() => {
   }
   function cutTo(x, y, z) { Object.assign(WORLD.cam, { x, y, z, tx: x, ty: y, tz: z }); }
 
-  let pending = null;
+  // Every bout but the finale is a tease: smash to black on the frame the killing blow
+  // lands, let the audio play over the dark, then fast-forward the aftermath behind it.
+  let pending = null, blackout = null, teasing = false;
+  BATTLE.onKill = () => {
+    if (!teasing) return;
+    blackout = card({ dur: 99, fadeIn: 0, fadeOut: 0.1 });
+    WORLD.splatLens(3, 1.3);
+  };
   async function fight(att, vic, opts = {}) {
     const [a, v] = [game.rigs[sq(att)], game.rigs[sq(vic)]];
     cutTo((a.x + v.x) / 2, (a.y + v.y) / 2 - 20, 1.7);
     game.busy = true;
+    teasing = !opts.full;
     const h = WORLD.run((function* () {
       yield* BATTLE.fight(a, v, opts);
       WORLD.spot = null;
@@ -83,23 +91,17 @@ const TR = (() => {
       game.busy = false;
     })());
     pending = h;
+    // lift the previous blackout now that the new shot is framed
+    if (blackout) { blackout.dur = performance.now() / 1000 - blackout.t0 + 0.1; blackout = null; SFX.drum(1); }
     if (opts.full) return until(() => h.done());
-    await until(() => h.done() || (WORLD.banner && WORLD.banner.bottom));
-    await sleep(1.4);
-  }
-  // hard cut through black; any unfinished fight tail is fast-forwarded (and muted) behind it
-  async function transition() {
-    const c = card({ dur: 0.34, fadeIn: 0.08, fadeOut: 0.12 });
-    SFX.drum(1);
-    await sleep(0.09);
-    if (pending && !pending.done()) {
-      c.dur = 99; SFX.quietFx(true); game.warp = 8;
-      await until(() => pending.done());
-      game.warp = 1; SFX.quietFx(false);
-      c.t0 = performance.now() / 1000 - 0.09; c.dur = 0.3;
-    }
+    await until(() => h.done() || blackout);
+    await sleep(0.85);
+    SFX.quietFx(true); game.warp = 8;
+    await until(() => h.done());
+    game.warp = 1; SFX.quietFx(false);
+    WORLD.settle();
     WORLD.lens = [];
-    await sleep(0.05);
+    teasing = false;
   }
 
   async function record() {
@@ -178,20 +180,19 @@ const TR = (() => {
       [['k', 'w', 'g1'], ['n', 'b', 'f2'], {}],
     ];
     for (const [att, vic, opts] of bouts) {
-      await transition();
       for (const [ty, f, n] of [att, vic]) if (!game.rigs[sq(n)]) spawnRig(ty, f, sq(n));
       await fight(att[2], vic[2], opts);
     }
     stopDrums();
 
-    // 5. checkmate
-    await transition();
+    // 5. checkmate: the one kill we show in full
     const king = game.rigs[sq('e8')];
     cutTo(king.x, king.y - 20, 2.2);
     WORLD.focus(king.x, king.y - 20, 2.4, 1);
     WORLD.letterboxT = 1;
     SFX.stinger();
     king.tween(BATTLE.G.cower, 0.4); king.spasm = 2; king.spasmAmt = 0.3;
+    if (blackout) { blackout.dur = performance.now() / 1000 - blackout.t0 + 0.1; blackout = null; }
     card({ dur: 2, bg: 0.45, fadeIn: 0.1, lines: [{ text: 'CHECKMATE', blood: true, scale: 5, y: 120 }] });
     await sleep(2);
     await fight('e1', 'e8', { finale: true, full: true });

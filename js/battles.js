@@ -19,6 +19,8 @@ const BATTLE = (() => {
   const away = (att, elev) => att.facing > 0 ? elev : PI - elev;
   const contact = (att, vic) => ({ x: (att.x + vic.x) / 2, y: vic.y - vic.hipH - 6 });
   const jz = (r, j) => { const p = r.joint(j); return { x: p.x, y: r.y, z: Math.max(1, r.y - p.y) }; };
+  // fired on the frame the killing blow lands (the trailer cuts away here)
+  const killBlow = (att, vic) => { if (BATTLE.onKill) BATTLE.onKill(att, vic); };
 
   function dropGear(vic, att) {
     for (const n of ['weapon', 'shield']) {
@@ -82,6 +84,7 @@ const BATTLE = (() => {
     for (let i = 0; i < 3; i++) {
       att.tween({ t: 0.35, bx: 7, ua: 1.05, fa: 0.5, gw: PI / 2 + 0.06, la: 0.75, lk: -0.35, ra: -0.5 }, 0.06, 'in');
       yield 0.06;
+      if (i === 0) killBlow(att, vic);
       const b = jz(vic, 'belly');
       WORLD.spray(b.x, b.y, b.z, away(att, 0.25), 0.6, 160, 45, { big: 0.3 });
       WORLD.spray(b.x, b.y, b.z, away(att, 0.3) + PI, 0.9, 70, 18);
@@ -121,6 +124,7 @@ const BATTLE = (() => {
     att.tween({ t: 0.45, bx: 8, ua: 1.55, fa: 0.1, gw: PI / 2 + 0.12, ub: 1.3, fb: 0.3, la: 0.8, lk: -0.35, ra: -0.55 }, 0.08, 'in');
     SFX.whoosh(1.3);
     yield 0.08;
+    killBlow(att, vic);
     const P = jz(vic, 'pelvis');
     SFX.slash(); SFX.splat(1.5); SFX.scream(vic.T.pitch, 1.4);
     WORLD.shake(0.95); WORLD.stop(0.17); WORLD.doFlash('#ff2020', 0.35); WORLD.splatLens(4);
@@ -158,6 +162,7 @@ const BATTLE = (() => {
     att.tween({ t: 0.55, bx: 5, by: 2, ua: 1.05, fa: 0.1, gw: 1.0, ub: 0.9, fb: 0.2, la: 0.65, lk: -0.3, ra: -0.5 }, 0.075, 'in');
     SFX.whoosh(0.8);
     yield 0.075;
+    killBlow(att, vic);
     const hd = jz(vic, 'headTop');
     vic.detached.head = true; vic.alive = false;
     SFX.crunch(); SFX.splat(1.7);
@@ -206,6 +211,7 @@ const BATTLE = (() => {
     WORLD.slowmo(0.3, 0.3);
     att.tween({ t: 0.75, h: 0.3, ua: 1.35, fa: 0.1, ub: 1.35, fb: 0.1, by: 4, jz: 0, bx: 6 }, 0.09, 'in');
     yield 0.09;
+    killBlow(att, vic);
     WORLD.run((function* () { for (let i = 1; i <= 4; i++) { vic.sqy = 1 - 0.84 * (i / 4); vic.sqx = 1 + 0.9 * (i / 4); yield 0.012; } })());
     vic.alive = false; vic.blood = 3;
     dropGear(vic, att);
@@ -235,6 +241,7 @@ const BATTLE = (() => {
     att.tween({ t: -0.15, h: -0.2, ua: 2.7, fa: 0.2, gw: PI, ub: 1.55, fb: 0.05, la: 0.2, ra: -0.3 }, 0.4); SFX.magic();
     vic.tween(G.cower, 0.3);
     for (let i = 0; i < 12; i++) { const tp = att.weaponTip(); WORLD.spark(tp.x, tp.y, 2, col); WORLD.light(tp.x, tp.y, 30, col, 0.08); yield 0.05; }
+    killBlow(att, vic);
     WORLD.bolt(() => att.weaponTip(), () => vic.joint('chest'), 1.5, col);
     WORLD.bolt(() => att.joint('handB'), () => vic.joint('head' in vic.J ? 'headTop' : 'chest'), 1.5, col);
     SFX.zap(); SFX.scream(vic.T.pitch * 1.25, 1.7);
@@ -271,6 +278,7 @@ const BATTLE = (() => {
     att.tween({ t: 0.1, h: 0, ua: 1.6, fa: 0.1, gw: PI / 2 + 0.2, ub: 1.5, fb: 0.1, la: 0.35, ra: -0.3 }, 0.4); SFX.magic();
     vic.tween(G.guard, 0.3);
     for (let i = 0; i < 10; i++) { const h = att.joint('handB'); WORLD.flame(h.x, h.y, 2, 2); WORLD.light(h.x, h.y, 26, '#ff8030', 0.08); yield 0.05; }
+    killBlow(att, vic);
     SFX.fire(); SFX.boom(0.5); SFX.scream(vic.T.pitch * 1.1, 2.4);
     WORLD.scorch(vic.x, vic.y, 15);
     vic.alive = false;
@@ -308,6 +316,7 @@ const BATTLE = (() => {
     yield 0.32;
     att.tween({ t: 0.4, bx: 6, ua: 1.2, fa: 0.3, gw: 1.3, ub: 1.0, fb: 0.5, la: 0.7, lk: -0.3, ra: -0.5 }, 0.07, 'in');
     yield 0.07;
+    killBlow(att, vic);
     const el = jz(vic, 'elbow');
     WORLD.gibFromPart(vic.detach('fore'), vic.y, { vx: att.facing * rand(40, 80), vz: rand(70, 120), vang: rand(-14, 14), bleed: 1.6, bloody: true, pool: 4 });
     const w = vic.detach('weapon');
@@ -381,5 +390,5 @@ const BATTLE = (() => {
     return txt;
   }
 
-  return { fight, G };
+  return { fight, G, onKill: null };
 })();
