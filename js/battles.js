@@ -369,7 +369,7 @@ const BATTLE = (() => {
     vic.rest(0.2, G.ready); att.rest(0.2, G.ready);
     vic.layer = 0.1;
     yield 0.4;
-    const txt = yield* KILLS[att.type](att, vic);
+    const txt = yield* (o.kill ? { queenBolt, queenFire }[o.kill] : KILLS[att.type])(att, vic);
     att.kills++; att.blood = Math.min(3, att.blood + 1);
     WORLD.banner = { top: WORLD.banner.top, bottom: o.finale ? 'REGICIDE!' : txt, t: 0 };
     yield 0.5;

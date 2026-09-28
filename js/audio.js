@@ -1,6 +1,6 @@
 // Fully synthesized sound: clangs, squelches, screams, and a doom drone.
 const SFX = (() => {
-  let ac = null, master, sfxBus, musicBus, noiseBuf, distCurve, muted = false, musicOn = true, musicNodes = null;
+  let ac = null, master, comp, sfxBus, musicBus, noiseBuf, distCurve, muted = false, musicOn = true, musicNodes = null;
   const R = (a, b) => a + Math.random() * (b - a);
 
   function init() {
@@ -9,7 +9,7 @@ const SFX = (() => {
     if (!AC) return;
     ac = new AC();
     master = ac.createGain(); master.gain.value = 0.7;
-    const comp = ac.createDynamicsCompressor();
+    comp = ac.createDynamicsCompressor();
     comp.threshold.value = -14; comp.ratio.value = 6;
     master.connect(comp); comp.connect(ac.destination);
     sfxBus = ac.createGain(); sfxBus.connect(master);
@@ -131,6 +131,15 @@ const SFX = (() => {
     },
     check() { for (const f of [110, 131, 156]) tone({ type: 'sawtooth', freq: f, gain: 0.08, a: 0.02, d: 1.0, lp: 900 }); S.bell(); },
     stinger() { for (const f of [55, 58.3, 82.4]) tone({ type: 'sawtooth', freq: f, gain: 0.18, a: 0.3, d: 3.5, lp: 700, dist: true }); S.bell(); },
+    drum(acc = 1) {
+      tone({ freq: 92, freqEnd: 40, gain: 0.5 * acc, d: 0.45, bus: musicBus });
+      noise({ type: 'lowpass', freq: 500, freqEnd: 90, gain: 0.3 * acc, d: 0.18, bus: musicBus });
+      noise({ type: 'bandpass', freq: 1800, q: 2, gain: 0.06 * acc, d: 0.04, bus: musicBus });
+    },
+    // silence effects only (music keeps playing), e.g. while fast-forwarding behind a cut
+    quietFx(on) { if (sfxBus) sfxBus.gain.setTargetAtTime(on ? 0 : 1, now(), 0.01); },
+    // the final mix as a MediaStream, for recording
+    stream() { init(); const d = ac.createMediaStreamDestination(); comp.connect(d); return d.stream; },
     toggleMusic() { musicOn = !musicOn; if (musicOn) startMusic(); else stopMusic(); return musicOn; },
   };
 

@@ -15,3 +15,14 @@ Battle-Chess-style pixel-art chess where every capture is a fight to the death. 
 - Checkmate ends with an on-screen execution of the king.
 
 Controls: mouse · SPACE hasten · M music · N sound · ESC menu
+
+## Trailer
+
+`trailer.html` plays a scripted announcement trailer rendered live by the game engine (click to start).
+
+To re-render the video (needs Node, `npm i playwright` in this folder, and ffmpeg):
+
+    node tools/record-trailer.js            # captures trailer/raw.webm (1920x1200, 60fps, with audio)
+    ffmpeg -ss 0.5 -i trailer/raw.webm -vf "crop=1920:1080:0:60,fps=60" \
+      -af "loudnorm=I=-14:TP=-1.5" -c:v libx264 -crf 14 -pix_fmt yuv420p \
+      -c:a aac -b:a 256k -movflags +faststart trailer/gore-chess-trailer.mp4

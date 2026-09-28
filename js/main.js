@@ -327,7 +327,7 @@ function promoAt(u) {
 
 // ---------------- update ----------------
 function update(dt) {
-  WORLD.fast = keys.Space && game.state === 'play' ? 3.5 : 1;
+  WORLD.fast = keys.Space && game.state === 'play' ? 3.5 : (game.warp || 1);
   WORLD.update(dt);
   game.fade = Math.max(0, game.fade - dt);
   if (game.over) {

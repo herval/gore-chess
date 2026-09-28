@@ -327,7 +327,10 @@ const WORLD = {
         r.broken = true; SFX.squish();
         this.spray(B.x, r.floorY, r.floorY - B.y, Math.PI / 2, 2, 60, 20);
       }
-      if (r.broken) { r.rest += dt; if (r.rest > 4) { this.drawRope(this.sx, r, true); r.dead = true; } }
+      // unbroken guts still settle into the floor eventually
+      r.age = (r.age || 0) + dt;
+      if (r.broken) r.rest += dt;
+      if (r.rest > 4 || r.age > 7) { this.drawRope(this.sx, r, true); r.dead = true; }
       if (r.broken && Math.random() < 0.1) { const q = pick(n); this.stainPx(q.x, Math.min(q.y + 1, r.floorY), 1, 1); }
     }
     this.ropes = this.ropes.filter(r => !r.dead);
