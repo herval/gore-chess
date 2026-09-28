@@ -13,7 +13,7 @@ const SFX = (() => {
     comp.threshold.value = -14; comp.ratio.value = 6;
     master.connect(comp); comp.connect(ac.destination);
     sfxBus = ac.createGain(); sfxBus.connect(master);
-    musicBus = ac.createGain(); musicBus.gain.value = 0.35; musicBus.connect(master);
+    musicBus = ac.createGain(); musicBus.gain.value = 0.5; musicBus.connect(master);
     noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -127,37 +127,64 @@ const SFX = (() => {
     },
     magic() { for (let i = 0; i < 6; i++) tone({ type: 'sine', freq: 400 * Math.pow(1.26, i), gain: 0.06, d: 0.4, delay: i * 0.05 }); },
     bell() {
-      for (const [f, g, d] of [[110, 0.3, 3], [220 * 1.19, 0.12, 2], [330, 0.1, 2.5], [520, 0.05, 1.5]]) tone({ freq: f, gain: g, a: 0.01, d, bus: musicBus || sfxBus });
+      for (const [f, g, d] of [[110, 0.12, 3], [220 * 1.19, 0.05, 2], [330, 0.04, 2.5], [520, 0.02, 1.5]]) tone({ freq: f, gain: g, a: 0.01, d, bus: musicBus || sfxBus });
     },
     check() { for (const f of [110, 131, 156]) tone({ type: 'sawtooth', freq: f, gain: 0.08, a: 0.02, d: 1.0, lp: 900 }); S.bell(); },
     stinger() { for (const f of [55, 58.3, 82.4]) tone({ type: 'sawtooth', freq: f, gain: 0.18, a: 0.3, d: 3.5, lp: 700, dist: true }); S.bell(); },
     toggleMusic() { musicOn = !musicOn; if (musicOn) startMusic(); else stopMusic(); return musicOn; },
   };
 
+  // Quiet dark-minor score: soft pads, low bass, a sparse music-box melody, all through reverb.
+  function impulse(sec) {
+    const len = ac.sampleRate * sec, buf = ac.createBuffer(2, len, ac.sampleRate);
+    for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
+    return buf;
+  }
+  function note(dest, midi, t, dur, type, gain, attack, lp) {
+    const osc = ac.createOscillator(); osc.type = type;
+    osc.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(gain, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    let node = osc;
+    if (lp) { const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp; osc.connect(f); node = f; }
+    node.connect(g); g.connect(dest);
+    osc.start(t); osc.stop(t + dur + 0.05);
+  }
   function startMusic() {
     if (!ac || musicNodes) return;
-    const t = now();
-    const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 4);
-    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 320; lp.Q.value = 4;
-    const lfo = ac.createOscillator(); lfo.frequency.value = 0.07;
-    const lg = ac.createGain(); lg.gain.value = 180; lfo.connect(lg); lg.connect(lp.frequency);
-    const oscs = [];
-    for (const [f, type] of [[36.7, 'sawtooth'], [36.9, 'sawtooth'], [55, 'triangle'], [43.6, 'sawtooth']]) {
-      const o = ac.createOscillator(); o.type = type; o.frequency.value = f; o.connect(lp); o.start(); oscs.push(o);
-    }
-    lp.connect(g); g.connect(musicBus); lfo.start();
-    let alive = true;
-    const beat = () => {
-      if (!alive) return;
-      if (!muted) {
-        tone({ freq: 55, freqEnd: 30, gain: 0.25, d: 0.25, bus: musicBus });
-        tone({ freq: 55, freqEnd: 30, gain: 0.18, d: 0.25, delay: 0.28, bus: musicBus });
+    const out = ac.createGain();
+    out.gain.setValueAtTime(0.0001, now()); out.gain.exponentialRampToValueAtTime(1, now() + 3);
+    const verb = ac.createConvolver(); verb.buffer = impulse(3.5);
+    const wet = ac.createGain(); wet.gain.value = 0.6;
+    out.connect(musicBus); out.connect(verb); verb.connect(wet); wet.connect(musicBus);
+    // Dm - Bb - Gm - A (harmonic minor turnaround)
+    const PROG = [[50, 53, 57], [46, 50, 53], [43, 46, 50], [45, 49, 52]];
+    const STEP = 0.55;
+    let step = 0, next = now() + 0.2, alive = true, timer;
+    const schedule = (st, t) => {
+      const chord = PROG[Math.floor(st / 8) % 4], s8 = st % 8;
+      if (s8 === 0) {
+        for (const m of chord) note(out, m + 12, t, STEP * 8 + 0.8, 'triangle', 0.028, 1.4, 900);
+        note(out, chord[0] - 12, t, STEP * 7, 'sine', 0.09, 0.3);
       }
-      setTimeout(beat, 1900);
+      if (s8 === 4) note(out, chord[0] - 12, t, STEP * 3.5, 'sine', 0.06, 0.2);
+      if ((s8 % 2 === 0 && Math.random() < 0.6) || Math.random() < 0.15) {
+        const m = pick3(chord) + 24 + (Math.random() < 0.2 ? 12 : 0);
+        note(out, m, t, 1.6, 'triangle', 0.035, 0.005, 3000);
+        note(out, m + 12, t, 0.8, 'sine', 0.012, 0.005);
+      }
+      if (st % 64 === 32) S.bell();
     };
-    const toll = () => { if (!alive) return; if (!muted) S.bell(); setTimeout(toll, R(9000, 16000)); };
-    setTimeout(beat, 1500); setTimeout(toll, 4000);
-    musicNodes = { stop() { alive = false; g.gain.setTargetAtTime(0.0001, now(), 0.5); setTimeout(() => { oscs.forEach(o => o.stop()); lfo.stop(); }, 2000); } };
+    const pick3 = c => c[Math.floor(Math.random() * c.length)];
+    const tick = () => {
+      if (!alive) return;
+      while (next < now() + 0.8) { schedule(step, next); step++; next += STEP; }
+      timer = setTimeout(tick, 200);
+    };
+    tick();
+    musicNodes = { stop() { alive = false; clearTimeout(timer); out.gain.setTargetAtTime(0.0001, now(), 0.4); } };
   }
   function stopMusic() { if (musicNodes) { musicNodes.stop(); musicNodes = null; } }
 
