@@ -458,7 +458,7 @@ function renderUI() {
   // title on the wall
   const hudA = 1 - lb;
   x.globalAlpha = hudA;
-  FONT.bloodTitle(x, 'GORE CHESS', W / 2, 30, 2, t, 3);
+  FONT.bloodTitle(x, 'GORE CHESS', W / 2, 18, 2, t, 3);
   // side panels
   const turn = game.pos ? game.pos.side : 0;
   for (const side of [0, 1]) {
